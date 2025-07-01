@@ -1,0 +1,16 @@
+(*********************************************************)
+(* GVL_Gcode - G-code 상수 정의                           *)
+(*********************************************************)
+VAR_GLOBAL CONSTANT
+    G00_VAL : INT := 0;     // Rapid move
+    G01_VAL : INT := 1;     // Linear interpolation
+    G02_VAL : INT := 2;     // CW arc
+    G03_VAL : INT := 3;     // CCW arc
+
+    G17_VAL : INT := 17;    // XY plane
+    G18_VAL : INT := 18;    // XZ plane
+    G19_VAL : INT := 19;    // YZ plane
+
+    G90_VAL : INT := 90;    // Absolute positioning
+    G91_VAL : INT := 91;    // Incremental positioning
+END_VAR

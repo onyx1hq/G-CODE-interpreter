@@ -21,6 +21,7 @@ VAR
     stTargetPos      : SM3_CNC.SMC_POSINFO; // 목표 좌표
     dArcC1, dArcC2   : LREAL;               // 원호 중심 계산 변수
     rtTrig           : R_TRIG;
+    i                : INT;
 END_VAR
 
 // Rising edge trigger
@@ -39,15 +40,14 @@ CASE eState OF
 
     PARSE:
         bBusy := TRUE;
-        // G코드 파싱 로직 (필요시 별도 함수 사용)
-        // 예: 모달 상태 갱신, 거리 모드 확인 등
-        // 상태 초기화
         stTargetPos := stStartPos;
-        stGeoOut.dVel := stCurrentState.fFeedRate;
+
+        // 기본 feedrate 및 가속도 설정 (단위: mm/s, mm/s^2)
+        stGeoOut.dVel := stCurrentState.fFeedRate;   // mm/s 단위로 전달됨
         stGeoOut.dAccel := 1000.0;
         stGeoOut.dDecel := 1000.0;
 
-        // 예시: G90/91 거리 모드 해석
+        // G90/91 거리 모드에 따른 목표 위치 계산
         IF stInputBlock.bHasX THEN
             IF stCurrentState.eDistanceMode = E_DistanceMode.G90_ABSOLUTE THEN
                 stTargetPos.dX := stInputBlock.valX;
@@ -55,18 +55,47 @@ CASE eState OF
                 stTargetPos.dX := stTargetPos.dX + stInputBlock.valX;
             END_IF;
         END_IF;
-        // 동일 방식으로 Y, Z 처리 예정
+        IF stInputBlock.bHasY THEN
+            IF stCurrentState.eDistanceMode = E_DistanceMode.G90_ABSOLUTE THEN
+                stTargetPos.dY := stInputBlock.valY;
+            ELSE
+                stTargetPos.dY := stTargetPos.dY + stInputBlock.valY;
+            END_IF;
+        END_IF;
+        IF stInputBlock.bHasZ THEN
+            IF stCurrentState.eDistanceMode = E_DistanceMode.G90_ABSOLUTE THEN
+                stTargetPos.dZ := stInputBlock.valZ;
+            ELSE
+                stTargetPos.dZ := stTargetPos.dZ + stInputBlock.valZ;
+            END_IF;
+        END_IF;
 
         eState := ENHANCE;
 
     ENHANCE:
-        // 모달 상태 보정 (G00, G01, G02, G03 등 처리)
-        // 예: G1 -> LINEAR, G2/G3 -> ARC 등
-        // 필요 시 에러 처리 포함
+        // G 코드에 따른 모드 변경 적용
+        FOR i := 0 TO stInputBlock.nGCount - 1 DO
+            CASE stInputBlock.aGCommands[i] OF
+                GVL_Gcode.G00_VAL: stCurrentState.eMoveMode := E_MoveMode.G00_RAPID;
+                GVL_Gcode.G01_VAL: stCurrentState.eMoveMode := E_MoveMode.G01_LINEAR;
+                GVL_Gcode.G02_VAL: stCurrentState.eMoveMode := E_MoveMode.G02_CW_ARC;
+                GVL_Gcode.G03_VAL: stCurrentState.eMoveMode := E_MoveMode.G03_CCW_ARC;
+                GVL_Gcode.G17_VAL: stCurrentState.ePlane := E_Plane.G17_XY;
+                GVL_Gcode.G18_VAL: stCurrentState.ePlane := E_Plane.G18_XZ;
+                GVL_Gcode.G19_VAL: stCurrentState.ePlane := E_Plane.G19_YZ;
+                GVL_Gcode.G90_VAL: stCurrentState.eDistanceMode := E_DistanceMode.G90_ABSOLUTE;
+                GVL_Gcode.G91_VAL: stCurrentState.eDistanceMode := E_DistanceMode.G91_INCREMENTAL;
+            END_CASE;
+        END_FOR;
+
+        // Feedrate 갱신 (단위 환산: G코드는 일반적으로 mm/min, 인터폴레이터는 mm/s)
+        IF stInputBlock.bHasF THEN
+            stCurrentState.fFeedRate := stInputBlock.valF / 60.0; // mm/min → mm/s
+        END_IF;
+
         eState := EXECUTE;
 
     EXECUTE:
-        // GeoInfo 구조체 생성
         stGeoOut.piStartPos := stStartPos;
         stGeoOut.piDestPos := stTargetPos;
         stGeoOut.iMoveType := SM3_CNC.SMC_MOVTYP.LIN;
